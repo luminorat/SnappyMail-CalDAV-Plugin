@@ -1,6 +1,6 @@
 <?php
 
-class MailbuxCalDAVAutoPlugin extends \RainLoop\Plugins\AbstractPlugin
+class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 {
 	const
 		NAME     = 'Mailbux CalDAV Auto',
