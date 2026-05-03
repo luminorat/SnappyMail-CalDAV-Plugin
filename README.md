@@ -1,6 +1,6 @@
 ## ⚠️ Note
 The major changes in this version will be to get it to work with a selfhosted version of snappymail and davical. It currently is a work in progress. 
-Clon this repo and copy its content to the plugin folder in a directory named snappymail-caldav. As soon as I get it working I will work on proper installation.
+Clone this repo and copy its content to the plugin folder in a directory named snappymail-caldav. As soon as I get it working I will work on proper installation.
 
 ## ⚠️ Note
 
