@@ -505,11 +505,11 @@ function hideCalendar() {
 }
 
 function loadFullCalendar() {
-	if (window.FullCalendar) { initializeFullCalendar(); return; }
+	if (window.FullCalendar) { initializeCalendar(); return; }
 	
 	// Load FullCalendar bundle (includes CSS)
 	const script = document.createElement('script');
-	script.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js';
+	script.src = '/?/Plugins/0/User/snappymail-caldav/index.global.min.js';
 	script.onload = () => {
 		initializeCalendar();
 	};

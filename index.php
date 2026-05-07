@@ -1,5 +1,7 @@
 <?php
-
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 {
 	const
@@ -10,8 +12,39 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 		DESCRIPTION = 'Auto-configures CalDAV calendar sync with JMAP support - switches per account',
 		REQUIRED = '2.0.0';
 
+
+	public function FilterJsonResponse($args)
+	{
+    		if (!isset($args['Result']) || !is_array($args['Result'])) {
+        		return;
+    		}
+
+    		// Detect identity list response
+    		if (($args['Action'] ?? '') !== 'IdentityList') {
+        		return;
+    		}
+
+    		$user = $this->Manager()->Actions()->GetAccount();
+
+    		$stored = $this->Manager()->Actions()->GetUserValue($user, 'caldavurl') ?? [];
+
+    		foreach ($args['Result'] as &$identity) {
+
+        		$id = $identity['id'] ?? null;
+
+        		if ($id) {
+            			$identity['caldav'] = $stored[$id] ?? '';
+        		}
+    		}
+	}
+
+
 	public function Init() : void
 	{
+
+                $this->UseLangs(true); // start use langs folder
+                // add configuration option for caldav url per identity
+                $this->addHook('json.before-response', 'FilterJsonResponse');
 		// Add custom JSON actions
 		$this->addJsonHook('GetCalendarEvents', 'DoGetCalendarEvents');
 		$this->addJsonHook('CreateCalendarEvent', 'DoCreateCalendarEvent');
@@ -21,11 +54,62 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 		// Add JavaScript
 		$this->addJs('calendar.js');
 		$this->addJs('contacts-popover.js');
+		$this->addJs('index.global.min.js');
+	
 		
 		// Add CSS
 		$this->addCss('calendar.css');
+        	$this->addHook('json.before-account-save', 'BeforeAccountSave');
+        	$this->addHook('json.after-account-load', 'AfterAccountLoad');	
+
+		// User Settings tab
+		$this->addJs('js/caldavSettings.js'); // add js file
+		$this->addJsonHook('JsonGetCaldavUserData', 'JsonGetCaldavUserData');
+		$this->addJsonHook('JsonSaveCaldavUserData', 'JsonSavecaldavUserData');
+		$this->addTemplate('templates/caldavSettingsTab.html');
+
 	}
-	
+
+	/**
+	 * @return array
+	 */
+	public function JsonGetCaldavUserData()
+	{
+		$aSettings = $this->getUserSettings();
+
+		$sCaldavURL = isset($aSettings['CaldavURL']) ? $aSettings['CaldavURL'] : '';
+
+		return $this->jsonResponse(__FUNCTION__, array(
+			'CaldavURL' => $sCaldavURL
+		));
+	}
+
+	/**
+	 * @return array
+	 */
+	public function JsonSaveCaldavUserData()
+	{
+		$sCaldavURL = $this->jsonParam('CaldavURL');
+
+		return $this->jsonResponse(__FUNCTION__, $this->saveUserSettings(array(
+			'CaldavURL' => $sCaldavURL
+		)));
+	}
+
+
+    public function BeforeAccountSave(&$aArgs)
+    {
+        if (isset($aArgs['CustomSetting'])) {
+            $this->getAccount()->SetCustomProperty('custom_setting', $aArgs['CustomSetting']);
+        }
+    }
+
+    public function AfterAccountLoad(&$aArgs)
+    {
+        $aArgs['CustomSetting'] =
+            $this->getAccount()->GetCustomProperty('custom_setting');
+    }
+
 	/**
 	 * Plugin configuration mapping
 	 */
@@ -37,6 +121,11 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 				->SetType(\RainLoop\Enumerations\PluginPropertyType::STRING)
 				->SetDescription('CalDAV server URL (e.g., https://my.mailbux.com/dav/cal)')
 				->SetDefaultValue('https://my.mailbux.com/dav/cal'),
+			\RainLoop\Plugins\Property::NewInstance('is_davical')
+				->SetLabel('Davical Server')
+				->SetType(\RainLoop\Enumerations\PluginPropertyType::BOOL)
+				->SetDescription('The server we use is a davical instance')
+				->SetDefaultValue(true),
 			\RainLoop\Plugins\Property::NewInstance('jmap_server')
 				->SetLabel('JMAP Server URL')
 				->SetType(\RainLoop\Enumerations\PluginPropertyType::STRING)
@@ -77,8 +166,24 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 				\RainLoop\Providers\Storage\Enumerations\StorageType::CONFIG,
 				'contacts_sync'
 			);
-			
-			if ($mData && \is_string($mData)) {
+			$mIsDavical = $this->Config()->Get('plugin', 'is_davical', '');
+                        if($mIsDavical){
+			  $mDavical_Server = $this->Config()->Get('plugin', 'caldav_server', '');
+  			  if ($mData && \is_string($mData)) {
+				$aCardDAVData = \json_decode($mData, true);
+				if (\is_array($aCardDAVData) && isset($aCardDAVData['User'], $aCardDAVData['Password'])) {
+				$userName = strstr($aCardDAVData['User'],'@',true);
+					$sCalDAVUrl = $mDavical_Server ."/caldav.php/". $userName ."/calendar";
+					return [
+						'User' => $userName,
+						'Password' => $aCardDAVData['Password'],
+						'CalDAVUrl' => $sCalDAVUrl
+					];
+				}
+			  }
+
+		        }else{	
+  			  if ($mData && \is_string($mData)) {
 				$aCardDAVData = \json_decode($mData, true);
 				if (\is_array($aCardDAVData) && isset($aCardDAVData['User'], $aCardDAVData['Password'])) {
 					// Build CalDAV URL from CardDAV URL by replacing dav/card with dav/cal
@@ -92,7 +197,8 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 						'CalDAVUrl' => $sCalDAVUrl
 					];
 				}
-			}
+			  }
+                        }
 		} catch (\Exception $e) {
 			// Silent fail
 		}
@@ -238,6 +344,7 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 	public function DoGetCalendarEvents() : array
 	{
 		try {
+			$aSettings = $this->getUserSettings();
 			$oAccount = $this->Manager()->Actions()->getAccountFromToken();
 			if (!$oAccount) {
 				return $this->jsonResponse(__FUNCTION__, ['events' => [], 'message' => 'Please log in first']);
@@ -263,7 +370,12 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 			}
 			
 			// Build CalDAV URL
-			$sCalDAVUrl = $aConfig['CalDAVUrl'] . '/default/';
+			$sCaldavfromSettings = isset($aSettings['CaldavURL']) ? $aSettings['CaldavURL'] : '';
+			if(isset($sCaldavfromSettings)){
+			  $sCalDAVUrl = $sCaldavfromSettings. '/';
+			}else{
+			  $sCalDAVUrl = $aConfig['CalDAVUrl'] . '/';
+			}
 			
 			
 			// CalDAV REPORT query for events
@@ -312,6 +424,7 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 	 */
 	public function DoCreateCalendarEvent() : array
 	{
+		error_log("DoCreateCalendarEvent");
 		try {
 			
 			$oAccount = $this->Manager()->Actions()->getAccountFromToken();

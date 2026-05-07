@@ -1,0 +1,9 @@
+{
+	"SETTINGS_CALDAV_PLUGIN": {
+		"TAB_NAME": "Caldav settings",
+		"LEGEND_CALDAV": "Caldav setting",
+		"LABEL_PHP_VERSION": "PHP version",
+		"LABEL_URL": "Calendar URL",
+		"BUTTON_SAVE": "Save"
+	}
+}
