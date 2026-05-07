@@ -234,14 +234,20 @@ cal.innerHTML = `
 		</div>
 		<div class="event-modal-footer">
 			<button class="event-modal-btn event-modal-btn-danger" id="event-delete-btn" style="display:none;">Delete</button>
-			<button class="event-modal-btn event-modal-btn-secondary" onclick="document.getElementById('event-modal').classList.remove('show')">Cancel</button>
+			<button class="event-modal-btn event-modal-btn-secondary" id="event-cancel-btn">Cancel</button>
 			<button class="event-modal-btn event-modal-btn-primary" id="event-save-btn">Save Event</button>
 		</div>
 	</div>
 </div>
 `;
-		document.body.appendChild(cal);
-
+	document.body.appendChild(cal);
+	document
+  .getElementById('event-cancel-btn')
+  .addEventListener('click', () => {
+      document
+        .getElementById('event-modal')
+        .classList.remove('show');
+  });
 	// Move account switcher to calendar (will restore on hide)
 	setTimeout(() => {
 		const originalDropdown = document.querySelector('#V-SystemDropDown');
@@ -605,7 +611,8 @@ return;
 	const result = oData.Result;
 
 		const events = (result.events || []).map(event => {
-		return {
+		if(event.rrule === ''){
+		  return {
 			id: event.uid || Math.random().toString(36),
 			title: event.summary || 'Untitled Event',
 			start: new Date(event.dtstart || event.start),
@@ -615,7 +622,14 @@ return;
 			borderColor: 'var(--cal-event-border)',
 			textColor: 'var(--cal-event-text)',
 			classNames: ['modern-event']
-		};
+		  };
+                }else{
+		  return {
+			id: event.uid || Math.random().toString(36),
+			title: event.summary || 'Untitled Event',
+			rrule: event.rrule
+		  };
+		}
 	});
 
 	calendarEvents = events;

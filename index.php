@@ -2,6 +2,7 @@
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
+
 class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 {
 	const
@@ -55,7 +56,8 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 		$this->addJs('calendar.js');
 		$this->addJs('contacts-popover.js');
 		$this->addJs('index.global.min.js');
-	
+		$this->addJs('js/rrule/rrule.min.js');		
+		$this->addJs('js/rrule/index.global.min.js');
 		
 		// Add CSS
 		$this->addCss('calendar.css');
@@ -293,15 +295,27 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 				$currentEvent = [];
 			} elseif ($line === 'END:VEVENT' && $currentEvent !== null) {
 				// Map to expected format
-				$event = [
+				if(array_key_exists('rrule',$currentEvent)){
+					$event = [
+                                        	'uid' => $currentEvent['uid'] ?? '',
+                                        	'summary' => $currentEvent['summary'] ?? 'Untitled',
+						'rrule' => "DTSTART:".$currentEvent['dtstart']."\nRRULE:".$currentEvent['rrule'] ?? ''
+					];
+				}else{
+				  $event = [
 					'uid' => $currentEvent['uid'] ?? '',
 					'summary' => $currentEvent['summary'] ?? 'Untitled',
 					'dtstart' => $this->parseICalDate($currentEvent['dtstart'] ?? ''),
 					'dtend' => $this->parseICalDate($currentEvent['dtend'] ?? ''),
 					'description' => $currentEvent['description'] ?? '',
 					'location' => $currentEvent['location'] ?? '',
-					'allDay' => !isset($currentEvent['dtstart']) || strpos($currentEvent['dtstart'], 'T') === false
+					'allDay' => !isset($currentEvent['dtstart']) || strpos($currentEvent['dtstart'], 'T') === false,
+					'rrule' => $currentEvent['rrule'] ?? '',
+                    			'exdates' => $this->parseExdates($currentEvent['exdate'] ?? ''),
+			                'rdates' => $this->parseRdates($currentEvent['rdate'] ?? ''),
+                    			'sequence' => $currentEvent['sequence'] ?? 0	
 				];
+				}
 				$events[] = $event;
 				$currentEvent = null;
 			} elseif ($currentEvent !== null && strpos($line, ':') !== false) {
@@ -314,7 +328,20 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 		
 		return $events;
 	}
-	
+	function getDate($offsetInMonths):string {
+    		// Get today's date as YYYY-MM-DD
+		$today = date('Y-m-d');
+    
+    		// Calculate date with offset
+    		$newDate = date('Y-m-d', strtotime($today . ' ' . $offsetInMonths . ' month'));
+    
+    		// Extract parts and format as yyymmdd
+    		$parts = explode('-', $newDate);
+    		$year = (int)$parts[0];
+    		$month = (int)$parts[1];
+    		$day = (int)$parts[2];
+    		return sprintf('%02d%02d%02d', $year, $month, $day);
+	}	
 	/**
 	 * Parse iCalendar date format to ISO string
 	 */
@@ -337,6 +364,56 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 		
 		return $dateStr;
 	}
+
+
+    /**
+     * Parse EXDATE (Excluded Dates) property
+     */
+    private function parseExdates($exdateString)
+    {
+        if (!$exdateString) {
+            return null;
+        }
+
+        $exdates = [];
+        $pattern = '/DTSTART;VALUE=(DATE|DATE-TIME);(TZID=([^;]+))?([;\s]+)?(.+)/i';
+        
+        preg_match_all($pattern, $exdateString, $matches, PREG_SET_ORDER);
+
+        foreach ($matches as $match) {
+            $exdates[] = [
+                'date' => $match[4],
+                'timezone' => $match[3] ?? null
+            ];
+        }
+
+        return $exdates;
+    }
+
+    /**
+     * Parse RDATE (Additional Dates) property
+     */
+    private function parseRdates($rdateString)
+    {
+        if (!$rdateString) {
+            return null;
+        }
+
+        $rdates = [];
+        $pattern = '/DTSTART;VALUE=(DATE|DATE-TIME);(TZID=([^;]+))?([;\s]+)?(.+)/i';
+        
+        preg_match_all($pattern, $rdateString, $matches, PREG_SET_ORDER);
+
+        foreach ($matches as $match) {
+            $rdates[] = [
+                'date' => $match[4],
+                'timezone' => $match[3] ?? null
+            ];
+        }
+
+        return $rdates;
+    }
+
 	
 	/**
 	 * Get calendar events
@@ -724,8 +801,4 @@ class SnappymailCaldavPlugin extends \RainLoop\Plugins\AbstractPlugin
 		
 		return $events;
 	}
-	
-	/**
-	 * Create calendar event
-	 */
 }
